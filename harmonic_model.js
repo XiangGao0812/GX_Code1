@@ -27,10 +27,23 @@ var LSMA = function (image){
         b11: ks1.select('B12')
     }).rename('rmse');
     */
-    var sma = col.multiply(10000).toInt();
-    sma = sma.set('system:time_start',img.get('system:time_start'));
-    var returnbands = ['SL','GV','DA'];
-    return ee.Image(sma).select(returnbands);
+    var scaled = col.multiply(10000);
+    var sma = ee.Image(scaled).set('system:time_start',img.get('system:time_start'));
+
+    var soil = sma.select('SL').rename('Soil');
+    var gvFraction = sma.select('GV').rename('GV');
+    var daFraction = sma.select('DA').rename('DA');
+    var npvFraction = ee.Image.constant(10000)
+      .subtract(sma.select('SL'))
+      .subtract(sma.select('GV'))
+      .subtract(sma.select('DA'))
+      .max(0)
+      .rename('NPV');
+
+    return soil
+      .addBands([gvFraction, npvFraction, daFraction])
+      .toInt()
+      .set('system:time_start', img.get('system:time_start'));
   };
   var SMA = unmixed(image);
   return SMA;
@@ -57,7 +70,7 @@ exports.Get_SMAseries_images = function (S_year,E_year,S_Day,E_Day,mergeDay,AOI)
     .map(s2_resample)
     .sort('system:time_start');
   
-  var s2Clouds = ee.ImageCollection('COPERNICUS/S2_CLOUD_PROBABILITY')
+  var cloudProbabilityCollection = ee.ImageCollection('COPERNICUS/S2_CLOUD_PROBABILITY')
     .filterBounds(AOI);
     
   /*********************SMA**********************************/
@@ -81,7 +94,7 @@ exports.Get_SMAseries_images = function (S_year,E_year,S_Day,E_Day,mergeDay,AOI)
       var EE_date = SS_date.advance(mergeDay, 'day');
       
       var Images = ImageCollection.filter(ee.Filter.date(SS_date, EE_date));
-      var s2Clouds = s2Clouds.filter(ee.Filter.date(SS_date, EE_date));
+      var s2Clouds = cloudProbabilityCollection.filter(ee.Filter.date(SS_date, EE_date));
       
       var s2SrWithCloudMask = ee.Join.saveFirst('cloud_mask').apply({
         primary: Images,
